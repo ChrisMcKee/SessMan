@@ -16,8 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc/types"
 
-	"awssession/internal/secretstore"
-	"awssession/internal/validate"
+	"sessman/internal/secretstore"
+	"sessman/internal/validate"
 )
 
 // ErrNotLoggedIn means there is no stored SSO token for the integration.
@@ -35,7 +35,7 @@ func IsAuthError(err error) bool {
 const maxRoleFetchers = 8
 
 const (
-	clientName = "awssession"
+	clientName = "sessman"
 	clientType = "public"
 	grantType  = "urn:ietf:params:oauth:grant-type:device_code"
 	// refreshGrantType renews an access token while the Identity Center

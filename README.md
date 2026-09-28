@@ -34,7 +34,7 @@ Linux needs GTK3 + WebKit2GTK (ABI 4.1 on modern distros). Example on Debian/Ubu
 sudo apt install build-essential libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 
-A FreeDesktop entry lives at [`build/linux/awssession.desktop`](build/linux/awssession.desktop).
+A FreeDesktop entry lives at [`build/linux/sessman.desktop`](build/linux/sessman.desktop).
 
 ## Usage
 
@@ -43,4 +43,4 @@ A FreeDesktop entry lives at [`build/linux/awssession.desktop`](build/linux/awss
 3. Start a session to write temporary credentials to `~/.aws/credentials` under the session's profile name.
 4. Use the AWS CLI/SDK with `--profile <name>`.
 
-Workspace metadata lives under the OS config directory (`%APPDATA%/awssession` on Windows, `~/Library/Application Support/awssession` on macOS, `~/.config/awssession` on Linux). SSO secrets are AES-GCM encrypted in `secrets/`; the master key is stored in the OS credential store (Cred Manager / Keychain / Secret Service).
+Workspace metadata lives under the OS config directory (`%APPDATA%/sessman` on Windows, `~/Library/Application Support/sessman` on macOS, `~/.config/sessman` on Linux). SSO secrets are AES-GCM encrypted in `secrets/`; the master key is stored in the OS credential store (Cred Manager / Keychain / Secret Service).

@@ -1,4 +1,4 @@
-module awssession
+module sessman
 
 go 1.25.0
 

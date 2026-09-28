@@ -25,8 +25,8 @@ The directory contains the following files:
 
 The `linux` directory holds files used when packaging/distributing the Linux binary.
 
-- `awssession.desktop` - FreeDesktop `.desktop` entry for application menus / AppImage / deb packaging.
-  Install alongside the binary (e.g. `/usr/share/applications/`) and place an icon named `awssession`
+- `sessman.desktop` - FreeDesktop `.desktop` entry for application menus / AppImage / deb packaging.
+  Install alongside the binary (e.g. `/usr/share/applications/`) and place an icon named `sessman`
   under the hicolor theme (or point `Icon=` at an absolute path).
 
 Build on Linux (or WSL) with:

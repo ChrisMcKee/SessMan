@@ -29,6 +29,7 @@ type IntegrationForm = {
   name: string;
   startUrl: string;
   ssoRegion: string;
+  defaultRegion: string;
 };
 
 type DeviceCodeInfo = {
@@ -74,6 +75,7 @@ const emptyForm: IntegrationForm = {
   name: "",
   startUrl: "",
   ssoRegion: "eu-west-1",
+  defaultRegion: "eu-west-1",
 };
 
 function App() {
@@ -215,7 +217,8 @@ function App() {
 
   function openAdd() {
     setEditId(null);
-    setForm(emptyForm);
+    const region = settings?.defaultRegion || emptyForm.defaultRegion;
+    setForm({ ...emptyForm, ssoRegion: region, defaultRegion: region });
     setShowAdd(true);
   }
 
@@ -225,17 +228,27 @@ function App() {
       name: integ.name,
       startUrl: integ.startUrl,
       ssoRegion: integ.ssoRegion,
+      defaultRegion: settings?.defaultRegion || integ.ssoRegion,
     });
     setShowAdd(true);
   }
 
   async function saveIntegration() {
     await withBusy("Saving integration…", async () => {
+      const payload = {
+        name: form.name,
+        startUrl: form.startUrl,
+        ssoRegion: form.ssoRegion,
+      };
       if (editId) {
-        await UpdateIntegration(editId, form);
+        await UpdateIntegration(editId, payload);
       } else {
-        const created = await AddIntegration(form);
+        const created = await AddIntegration(payload);
         setNav(created.id);
+      }
+      // Session list region comes from Settings.DefaultRegion, not SSO region.
+      if (settings && form.defaultRegion !== settings.defaultRegion) {
+        await UpdateSettings({ ...settings, defaultRegion: form.defaultRegion });
       }
       setShowAdd(false);
     });
@@ -428,11 +441,11 @@ function App() {
   }, [eksRegion, eksSession?.region, settings?.defaultRegion]);
 
   const ssoRegionOptions = useMemo(() => {
-    const extras = [form.ssoRegion].filter(
+    const extras = [form.ssoRegion, form.defaultRegion].filter(
       (r): r is string => !!r && !AWS_REGIONS.includes(r)
     );
-    return [...extras, ...AWS_REGIONS];
-  }, [form.ssoRegion]);
+    return [...new Set(extras), ...AWS_REGIONS];
+  }, [form.ssoRegion, form.defaultRegion]);
 
   const defaultRegionOptions = useMemo(() => {
     const extras = [settings?.defaultRegion].filter(
@@ -742,14 +755,18 @@ function App() {
                                   : "action-toggle"
                           }
                           title={
-                            s.state === "Active"
-                              ? "Stop session"
-                              : s.lastError || "Start session"
+                            s.state === "Inactive"
+                              ? "Start session"
+                              : s.state === "Error"
+                                ? s.lastError || "Stop session"
+                                : "Stop session"
                           }
                           onClick={() =>
-                            s.state === "Active"
-                              ? withBusy("Stopping…", () => StopSession(s.id))
-                              : withBusy("Starting…", () => StartSession(s.id))
+                            // Error/Pending are "on" leftovers (e.g. after cold start
+                            // before auth resumes) — one click should clear them.
+                            s.state === "Inactive"
+                              ? withBusy("Starting…", () => StartSession(s.id))
+                              : withBusy("Stopping…", () => StopSession(s.id))
                           }
                         />
                       </div>
@@ -1093,7 +1110,16 @@ function App() {
               SSO region
               <select
                 value={form.ssoRegion}
-                onChange={(e) => setForm({ ...form, ssoRegion: e.target.value })}
+                onChange={(e) => {
+                  const ssoRegion = e.target.value;
+                  setForm((prev) => ({
+                    ...prev,
+                    ssoRegion,
+                    // Keep default region in lockstep until the user diverges.
+                    defaultRegion:
+                      prev.defaultRegion === prev.ssoRegion ? ssoRegion : prev.defaultRegion,
+                  }));
+                }}
               >
                 {ssoRegionOptions.map((r) => (
                   <option key={r} value={r}>
@@ -1102,6 +1128,23 @@ function App() {
                 ))}
               </select>
             </label>
+            <label>
+              Default region
+              <select
+                value={form.defaultRegion}
+                onChange={(e) => setForm({ ...form, defaultRegion: e.target.value })}
+              >
+                {ssoRegionOptions.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="muted small" style={{ marginTop: "-0.5rem" }}>
+              SSO region is for Identity Center. Default region is written on sessions and
+              AWS profiles.
+            </p>
             <div className="modal-actions">
               <button type="button" className="ghost" onClick={() => setShowAdd(false)}>
                 Cancel

@@ -21,9 +21,9 @@ import (
 var ErrNotFound = errors.New("secret not found")
 
 const (
-	appDirName     = "awssession"
+	appDirName     = "sessman"
 	secretsDirName = "secrets"
-	keyringService = "awssession"
+	keyringService = "sessman"
 	keyringUser    = "master-key"
 	fileMagic      = "AWSSSEC1" // 8 bytes
 	keySize        = 32

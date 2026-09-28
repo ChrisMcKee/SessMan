@@ -2,8 +2,8 @@
 Type=Application
 Name=AWS Session Manager
 Comment=AWS IAM Identity Center session manager
-Exec=awssession
-Icon=awssession
+Exec=sessman
+Icon=sessman
 Terminal=false
 Categories=Development;Utility;
 StartupNotify=true

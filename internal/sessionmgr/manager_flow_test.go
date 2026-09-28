@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"awssession/internal/awsfiles"
-	"awssession/internal/domain"
-	"awssession/internal/sso"
-	"awssession/internal/workspace"
+	"sessman/internal/awsfiles"
+	"sessman/internal/domain"
+	"sessman/internal/sso"
+	"sessman/internal/workspace"
 )
 
 type fakeSSO struct {
@@ -389,5 +389,27 @@ func TestUpdateSettingsAlignsSessionRegions(t *testing.T) {
 	}
 	if sessions[0].Region != "eu-west-2" {
 		t.Fatalf("session region not updated: %q", sessions[0].Region)
+	}
+}
+
+func TestAddIntegrationSeedsDefaultRegion(t *testing.T) {
+	e := newEnv(t, &fakeSSO{}, domain.Session{Region: "eu-west-1", State: domain.SessionInactive})
+	if got := e.mgr.GetSettings().DefaultRegion; got != "eu-west-1" {
+		t.Fatalf("precondition: factory default %q", got)
+	}
+	_, err := e.mgr.AddIntegration(AddIntegrationInput{
+		Name:      "Work",
+		StartURL:  "https://d-example.awsapps.com/start",
+		SSORegion: "eu-west-2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := e.mgr.GetSettings().DefaultRegion; got != "eu-west-2" {
+		t.Fatalf("default region not seeded from SSO region: %q", got)
+	}
+	sessions := e.mgr.ListSessions()
+	if sessions[0].Region != "eu-west-2" {
+		t.Fatalf("existing session region not updated: %q", sessions[0].Region)
 	}
 }

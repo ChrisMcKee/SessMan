@@ -8,11 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"awssession/internal/domain"
+	"sessman/internal/domain"
 )
 
-const appDirName = "awssession"
-const workspaceFile = "workspace.json"
+const (
+	appDirName    = "sessman"
+	workspaceFile = "workspace.json"
+)
 
 // Store loads and saves the workspace JSON file.
 type Store struct {

@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"awssession/internal/domain"
-	"awssession/internal/workspace"
+	"sessman/internal/domain"
+	"sessman/internal/workspace"
 )
 
 func TestDefaultProfileName(t *testing.T) {

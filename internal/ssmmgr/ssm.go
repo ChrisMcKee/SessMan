@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 
-	"awssession/internal/validate"
+	"sessman/internal/validate"
 )
 
 const (
@@ -59,7 +59,8 @@ func CheckSetup() SetupStatus {
 // ListOnline lists SSM instances with Online ping status for a named profile/region.
 // Name prefers the EC2 Name tag when available.
 func ListOnline(ctx context.Context, profile, region string) ([]Instance, error) {
-	cfg, err := config.LoadDefaultConfig(ctx,
+	cfg, err := config.LoadDefaultConfig(
+		ctx,
 		config.WithSharedConfigProfile(profile),
 		config.WithRegion(region),
 	)

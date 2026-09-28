@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build awssession for Linux (amd64) inside WSL / native Linux.
+# Build sessman for Linux (amd64) inside WSL / native Linux.
 # Requires: Go, Node, Wails CLI, and GTK3 + WebKit2GTK 4.1 headers.
 set -euo pipefail
 
@@ -38,4 +38,4 @@ pkg-config --modversion webkit2gtk-4.1
 
 wails build -platform linux/amd64 -tags webkit2_41 -skipbindings
 ls -la build/bin/
-file build/bin/awssession || true
+file build/bin/sessman || true

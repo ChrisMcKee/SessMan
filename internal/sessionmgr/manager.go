@@ -12,11 +12,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"awssession/internal/awsfiles"
-	"awssession/internal/domain"
-	"awssession/internal/sso"
-	"awssession/internal/validate"
-	"awssession/internal/workspace"
+	"sessman/internal/awsfiles"
+	"sessman/internal/domain"
+	"sessman/internal/sso"
+	"sessman/internal/validate"
+	"sessman/internal/workspace"
 )
 
 const (
@@ -249,6 +249,9 @@ func (in *AddIntegrationInput) normalize() error {
 }
 
 // AddIntegration creates a new SSO integration.
+// When the workspace still uses the factory default region, the SSO region
+// chosen here becomes the default session region — users typically pick the
+// region they want for both Identity Center and named profiles.
 func (m *Manager) AddIntegration(in AddIntegrationInput) (domain.Integration, error) {
 	if err := in.normalize(); err != nil {
 		return domain.Integration{}, err
@@ -262,6 +265,13 @@ func (m *Manager) AddIntegration(in AddIntegrationInput) (domain.Integration, er
 	}
 	err := m.store.Update(func(ws *domain.Workspace) error {
 		ws.Integrations = append(ws.Integrations, integ)
+		factory := domain.DefaultSettings().DefaultRegion
+		if ws.Settings.DefaultRegion == factory && in.SSORegion != factory {
+			ws.Settings.DefaultRegion = in.SSORegion
+			for i := range ws.Sessions {
+				ws.Sessions[i].Region = in.SSORegion
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -780,6 +790,10 @@ func (m *Manager) upsertSessions(integrationID string, roles []sso.AccountRole) 
 			}
 			kept[key] = true
 			if prev, ok := existing[key]; ok {
+				// Keep region aligned with the current default on every sync so
+				// changing Settings (or seeding it from Add Integration) shows up
+				// without requiring a separate settings save.
+				prev.Region = ws.Settings.DefaultRegion
 				newSessions = append(newSessions, prev)
 				usedProfiles[strings.ToLower(prev.ProfileName)] = true
 				continue

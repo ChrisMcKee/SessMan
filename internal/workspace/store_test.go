@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"awssession/internal/domain"
+	"sessman/internal/domain"
 )
 
 func TestStoreRoundTrip(t *testing.T) {

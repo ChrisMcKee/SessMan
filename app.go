@@ -8,14 +8,14 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"awssession/internal/awsfiles"
-	"awssession/internal/domain"
-	"awssession/internal/eksmgr"
-	"awssession/internal/secretstore"
-	"awssession/internal/sessionmgr"
-	"awssession/internal/ssmmgr"
-	"awssession/internal/sso"
-	"awssession/internal/workspace"
+	"sessman/internal/awsfiles"
+	"sessman/internal/domain"
+	"sessman/internal/eksmgr"
+	"sessman/internal/secretstore"
+	"sessman/internal/sessionmgr"
+	"sessman/internal/ssmmgr"
+	"sessman/internal/sso"
+	"sessman/internal/workspace"
 )
 
 // App is the Wails-bound application API.

@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 
-	"awssession/internal/validate"
+	"sessman/internal/validate"
 )
 
 // maxDescribers bounds concurrent DescribeCluster calls.
@@ -57,7 +57,8 @@ func AWSCLIInstalled() bool {
 
 // ListClusters lists EKS clusters in a region and describes each one.
 func ListClusters(ctx context.Context, profile, region string) ([]Cluster, error) {
-	cfg, err := config.LoadDefaultConfig(ctx,
+	cfg, err := config.LoadDefaultConfig(
+		ctx,
 		config.WithSharedConfigProfile(profile),
 		config.WithRegion(region),
 	)
@@ -129,7 +130,8 @@ func UpdateKubeconfig(profile, region, clusterName string) error {
 			return err
 		}
 	}
-	cmd := exec.Command("aws", "eks", "update-kubeconfig",
+	cmd := exec.Command(
+		"aws", "eks", "update-kubeconfig",
 		"--name", clusterName,
 		"--region", region,
 		"--profile", profile,
