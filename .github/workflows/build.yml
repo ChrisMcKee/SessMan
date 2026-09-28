@@ -119,7 +119,7 @@ jobs:
         working-directory: build/windows/installer
         env:
           CERTUM_KEY_ID: ${{ secrets.CERTUM_KEY_ID }}
-        run: makensis -DSIGN -DARG_WAILS_AMD64_BINARY=..\..\bin\sessman.exe project.nsi
+        run: makensis -DSIGN "-DARG_WAILS_AMD64_BINARY=$env:GITHUB_WORKSPACE\build\bin\sessman.exe" project.nsi
 
       - name: Verify signatures
         if: runner.os == 'Windows'
