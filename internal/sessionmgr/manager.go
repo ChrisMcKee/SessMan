@@ -382,8 +382,56 @@ func (m *Manager) Login(ctx context.Context, integrationID string) error {
 	if err := m.setIntegrationStatus(integrationID, domain.IntegrationLoggedIn); err != nil {
 		return err
 	}
+	m.resumeAfterLogin(lctx, integrationID)
 	m.notify()
 	return nil
+}
+
+// resumeAfterLogin restarts sessions that were left Error/Pending/lapsed by an
+// SSO expiry, and clears leftover LastError on still-valid Active sessions.
+func (m *Manager) resumeAfterLogin(ctx context.Context, integrationID string) {
+	ws := m.store.Get()
+	var restart, clearErr []string
+	now := time.Now()
+	for _, sess := range ws.Sessions {
+		if sess.IntegrationID != integrationID {
+			continue
+		}
+		switch sess.State {
+		case domain.SessionError, domain.SessionPending:
+			restart = append(restart, sess.ID)
+		case domain.SessionActive:
+			if credentialsLapsed(sess, now) {
+				restart = append(restart, sess.ID)
+			} else if sess.LastError != "" {
+				clearErr = append(clearErr, sess.ID)
+			}
+		}
+	}
+	if len(clearErr) > 0 {
+		ids := map[string]bool{}
+		for _, id := range clearErr {
+			ids[id] = true
+		}
+		_ = m.store.Update(func(ws *domain.Workspace) error {
+			for i := range ws.Sessions {
+				if ids[ws.Sessions[i].ID] {
+					ws.Sessions[i].LastError = ""
+				}
+			}
+			return nil
+		})
+	}
+	var wg sync.WaitGroup
+	for _, id := range restart {
+		id := id
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = m.StartSession(ctx, id)
+		}()
+	}
+	wg.Wait()
 }
 
 // CancelLogin aborts a pending device-authorization login, if any.

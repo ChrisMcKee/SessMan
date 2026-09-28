@@ -293,6 +293,63 @@ func TestStopDuringStartIsNotResurrected(t *testing.T) {
 	}
 }
 
+func TestLoginResumesErrorSessions(t *testing.T) {
+	f := &fakeSSO{
+		roles: []sso.AccountRole{
+			{AccountID: "111", AccountName: "acct", RoleName: "Admin"},
+			{AccountID: "222", AccountName: "prod", RoleName: "Admin"},
+		},
+		creds: sso.RoleCredentials{AccessKeyID: "AK", SecretAccessKey: "SK", SessionToken: "ST", Expiration: time.Now().Add(time.Hour)},
+	}
+	e := newEnv(t, f, domain.Session{State: domain.SessionError, LastError: "refresh token: sso token expired"})
+	_ = e.store.Update(func(ws *domain.Workspace) error {
+		ws.Integrations[0].Status = domain.IntegrationExpired
+		ws.Sessions = append(ws.Sessions, domain.Session{
+			ID: "s2", IntegrationID: "i1", AccountID: "222", AccountName: "prod",
+			RoleName: "Admin", ProfileName: "prod", State: domain.SessionInactive,
+		})
+		return nil
+	})
+
+	if err := e.mgr.Login(context.Background(), "i1"); err != nil {
+		t.Fatal(err)
+	}
+	if e.mgr.ListIntegrations()[0].Status != domain.IntegrationLoggedIn {
+		t.Fatal("integration not logged in")
+	}
+	if s := e.session(t); s.State != domain.SessionActive || s.LastError != "" {
+		t.Fatalf("error session should resume after login: %+v", s)
+	}
+	for _, s := range e.mgr.ListSessions() {
+		if s.ID == "s2" && s.State != domain.SessionInactive {
+			t.Fatalf("inactive session must stay off: %+v", s)
+		}
+	}
+	if f.callCount() != 1 {
+		t.Fatalf("want one credential fetch for the error session, got %d", f.callCount())
+	}
+}
+
+func TestLoginClearsStaleActiveLastError(t *testing.T) {
+	f := &fakeSSO{
+		roles: []sso.AccountRole{{AccountID: "111", AccountName: "acct", RoleName: "Admin"}},
+	}
+	e := newEnv(t, f, domain.Session{
+		State:     domain.SessionActive,
+		ExpiresAt: soon(time.Hour),
+		LastError: "refresh token: sso token expired",
+	})
+	if err := e.mgr.Login(context.Background(), "i1"); err != nil {
+		t.Fatal(err)
+	}
+	if s := e.session(t); s.State != domain.SessionActive || s.LastError != "" {
+		t.Fatalf("stale LastError should clear without restart: %+v", s)
+	}
+	if f.callCount() != 0 {
+		t.Fatalf("fresh Active session should not be restarted, got %d fetches", f.callCount())
+	}
+}
+
 func TestLoginCancelAndSingleLogin(t *testing.T) {
 	started := make(chan struct{})
 	f := &fakeSSO{login: func(ctx context.Context) error {
