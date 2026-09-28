@@ -66,9 +66,12 @@ ManifestDPIAware true
 
 !insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
 
-## The following two statements can be used to sign the installer and the uninstaller. The path to the binaries are provided in %1
-#!uninstfinalize 'signtool --file "%1"'
-#!finalize 'signtool --file "%1"'
+## Sign the installer and the uninstaller when built with -DSIGN (CI does this after signing the app exe). The path to the binaries are provided in %1
+## makensis runs from this directory, so sign.ps1 is one level up.
+!ifdef SIGN
+    !uninstfinalize 'powershell -NoProfile -ExecutionPolicy Bypass -File "..\sign.ps1" "%1"'
+    !finalize 'powershell -NoProfile -ExecutionPolicy Bypass -File "..\sign.ps1" "%1"'
+!endif
 
 Name "${INFO_PRODUCTNAME}"
 OutFile "..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the installer's file.

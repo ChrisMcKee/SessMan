@@ -8,6 +8,7 @@ on:
 
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
+  SIMPLYSIGN_URL: "https://files.certum.eu/software/SimplySignDesktop/Windows/9.4.4.92/SimplySignDesktop-9.4.4.92-64-bit-en.msi"
 
 jobs:
   build:
@@ -16,16 +17,13 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            os: ubuntu-24.04
-            tags: webkit2_41
+            os: ubuntu-latest
             artifact: sessman-linux-amd64
           - platform: windows/amd64
             os: windows-latest
-            tags: ""
             artifact: sessman-windows-amd64
           - platform: darwin/universal
             os: macos-latest
-            tags: ""
             artifact: sessman-darwin-universal
 
     runs-on: ${{ matrix.os }}
@@ -37,7 +35,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.23.x"
+          go-version: "1.25.x"
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -55,21 +53,146 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build
-        shell: bash
-        run: |
-          TAGS="${{ matrix.tags }}"
-          if [ -n "$TAGS" ]; then
-            wails build -platform "${{ matrix.platform }}" -tags "$TAGS" -clean
-          else
-            wails build -platform "${{ matrix.platform }}" -clean
-          fi
+      # ---- Linux / macOS ----------------------------------------------------
 
-      - name: Upload artifact
+      - name: Build
+        if: runner.os != 'Windows'
+        run: wails build -platform "${{ matrix.platform }}" -clean
+
+      - name: Package Linux binary
+        if: runner.os == 'Linux'
+        run: tar -czf build/bin/${{ matrix.artifact }}.tar.gz -C build/bin sessman -C ../linux sessman.desktop
+
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          # ditto preserves the bundle metadata that a plain zip drops
+          ditto -c -k --keepParent build/bin/*.app build/bin/${{ matrix.artifact }}.zip
+
+      # ---- Windows: build, sign exe, build installer around signed exe, sign installer ----
+
+      - name: Build (unsigned exe, generates NSIS inputs)
+        if: runner.os == 'Windows'
+        run: wails build -platform "${{ matrix.platform }}" -clean -nsis
+
+      - name: Ensure NSIS is available
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis -y --no-progress
+          }
+          # Chocolatey/preinstalled NSIS is not always on PATH for later steps
+          "${env:ProgramFiles(x86)}\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Cache SimplySign installer
+        if: runner.os == 'Windows'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: SimplySignDesktop.msi
+          key: simplysign-msi-${{ env.SIMPLYSIGN_URL }}
+
+      - name: Setup Certum SimplySign environment
+        if: runner.os == 'Windows'
+        uses: chrismckee/windows-app-signing-setup-action@89ae3b032d4bc7a5b98d1a42a34e61ecb6faad64 # main as of 2026-06-29
+        with:
+          certum-username: ${{ secrets.CERTUM_USERNAME }}
+          certum-otp-uri: ${{ secrets.CERTUM_OTP_URI }}
+          certum-key-id: ${{ secrets.CERTUM_KEY_ID }}
+          simplysign-url: ${{ env.SIMPLYSIGN_URL }}
+
+      - name: Sign exe
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CERTUM_KEY_ID: ${{ secrets.CERTUM_KEY_ID }}
+        run: ./build/windows/sign.ps1 build/bin/sessman.exe
+
+      # The installer embeds the exe, so it must be rebuilt after signing. -DSIGN makes
+      # project.nsi sign the installer and uninstaller (overwrites the unsigned installer
+      # produced by wails above).
+      - name: Build and sign NSIS installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: build/windows/installer
+        env:
+          CERTUM_KEY_ID: ${{ secrets.CERTUM_KEY_ID }}
+        run: makensis -DSIGN -DARG_WAILS_AMD64_BINARY=..\..\bin\sessman.exe project.nsi
+
+      - name: Verify signatures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($file in (Get-ChildItem build/bin/sessman.exe, build/bin/*-installer.exe)) {
+            $sig = Get-AuthenticodeSignature $file.FullName
+            Write-Host "$($file.Name): $($sig.Status) ($($sig.SignerCertificate.Subject))"
+            if ($sig.Status -ne 'Valid') { $failed = $true }
+          }
+          if ($failed) { throw 'One or more files are not validly signed.' }
+
+      # ---- Artifacts --------------------------------------------------------
+
+      - name: Upload artifact (Linux)
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            build/bin/**
-            build/linux/sessman.desktop
+          path: build/bin/${{ matrix.artifact }}.tar.gz
           if-no-files-found: error
+
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/bin/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
+      - name: Upload artifact (Windows exe)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/bin/sessman.exe
+          if-no-files-found: error
+
+      - name: Upload artifact (Windows installer)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.artifact }}-installer
+          path: build/bin/*-installer.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish release assets
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: sessman-*
+          path: dist
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lh dist
+
+      # Tag pushes publish a normal release. Manual runs have no tag, so they create a
+      # draft release (no tag is created until the draft is published).
+      - name: Upload release assets
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('dispatch-{0}', github.run_number) }}
+          target_commitish: ${{ github.sha }}
+          draft: ${{ github.ref_type != 'tag' }}
+          generate_release_notes: true
+          files: dist/*
+          fail_on_unmatched_files: true
