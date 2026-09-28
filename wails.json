@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Sessman",
+  "outputfilename": "sessman",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Chris McKee",
+    "email": "chris@chrismckee.co.uk"
+  },
+  "info": {
+    "companyName": "Chris McKee",
+    "productName": "Sessman",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright 2023 Chris McKee",
+    "comments": "Built using Wails (https://wails.io)"
+  }
+}

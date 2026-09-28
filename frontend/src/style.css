@@ -1,0 +1,17 @@
+html {
+  background-color: #1a1b1e;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
