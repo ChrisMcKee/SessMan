@@ -18,6 +18,8 @@ jobs:
         include:
           - platform: linux/amd64
             os: ubuntu-latest
+            # Wails defaults to webkit2gtk-4.0, which Ubuntu 24.04 no longer ships
+            tags: webkit2_41
             artifact: sessman-linux-amd64
           - platform: windows/amd64
             os: windows-latest
@@ -57,7 +59,7 @@ jobs:
 
       - name: Build
         if: runner.os != 'Windows'
-        run: wails build -platform "${{ matrix.platform }}" -clean
+        run: wails build -platform "${{ matrix.platform }}" -clean ${{ matrix.tags && format('-tags {0}', matrix.tags) || '' }}
 
       - name: Package Linux binary
         if: runner.os == 'Linux'
