@@ -304,6 +304,38 @@ select {
   justify-content: flex-end;
 }
 
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-left: 0.35rem;
+  --wails-draggable: no-drag;
+}
+
+.win-btn {
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+}
+
+.win-btn:hover {
+  color: var(--text);
+  background: #2a2c33;
+  border-color: var(--border);
+}
+
+.win-btn.win-close:hover {
+  color: #fff;
+  background: #c42b1c;
+  border-color: #c42b1c;
+}
+
 .icon-btn {
   width: 34px;
   height: 34px;

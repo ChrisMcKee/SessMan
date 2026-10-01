@@ -22,7 +22,7 @@ import {
   UpdateIntegration,
   UpdateSettings,
 } from "../wailsjs/go/main/App";
-import { EventsOn } from "../wailsjs/runtime/runtime";
+import { EventsOn, Quit, WindowMinimise } from "../wailsjs/runtime/runtime";
 import type { domain, eksmgr, ssmmgr } from "../wailsjs/go/models";
 
 type IntegrationForm = {
@@ -540,6 +540,24 @@ function App() {
             >
               <GearIcon />
             </button>
+            <div className="window-controls">
+              <button
+                type="button"
+                className="win-btn"
+                title="Minimise"
+                onClick={() => WindowMinimise()}
+              >
+                <MinimiseIcon />
+              </button>
+              <button
+                type="button"
+                className="win-btn win-close"
+                title="Close"
+                onClick={() => Quit()}
+              >
+                <CloseIcon />
+              </button>
+            </div>
           </div>
         </header>
 
@@ -1302,6 +1320,28 @@ function GearIcon() {
       fill="currentColor"
     >
       <path d="m6.823 2-2.217.914.516 1.25a4.7 4.7 0 0 0-.95.944L2.925 4.59l-.922 2.212 1.247.52a4.8 4.8 0 0 0-.002 1.34L2 9.176l.914 2.218 1.248-.515a4.8 4.8 0 0 0 .945.949l-.518 1.247 2.214.921.519-1.246a5 5 0 0 0 .674.048 5 5 0 0 0 .666-.047L9.176 14l2.218-.914-.515-1.248a4.8 4.8 0 0 0 .95-.945l1.245.518.922-2.214-1.247-.519a4.7 4.7 0 0 0 .002-1.34L14 6.824l-.914-2.218-1.25.515a4.7 4.7 0 0 0-.944-.949l.518-1.246-2.212-.922-.52 1.247a5 5 0 0 0-.676-.049 5 5 0 0 0-.663.047Zm1.175 9a2.999 2.999 0 1 1 2.77-1.847 2.98 2.98 0 0 1-2.77 1.846M8 6.801a1.2 1.2 0 1 0 .46.093A1.2 1.2 0 0 0 8 6.8" />
+    </svg>
+  );
+}
+
+function MinimiseIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+      <path d="M2 6h8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+      <path
+        d="M3 3l6 6M9 3l-6 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
