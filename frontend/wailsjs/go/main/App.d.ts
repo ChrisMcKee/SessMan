@@ -44,3 +44,5 @@ export function UpdateEKSKubeconfig(arg1:string,arg2:string,arg3:string):Promise
 export function UpdateIntegration(arg1:string,arg2:sessionmgr.AddIntegrationInput):Promise<void>;
 
 export function UpdateSettings(arg1:domain.Settings):Promise<void>;
+
+export function Version():Promise<string>;

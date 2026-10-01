@@ -21,6 +21,7 @@ import {
   UpdateEKSKubeconfig,
   UpdateIntegration,
   UpdateSettings,
+  Version,
 } from "../wailsjs/go/main/App";
 import { EventsOn, Quit, WindowMinimise } from "../wailsjs/runtime/runtime";
 import type { domain, eksmgr, ssmmgr } from "../wailsjs/go/models";
@@ -78,6 +79,12 @@ const emptyForm: IntegrationForm = {
   defaultRegion: "eu-west-1",
 };
 
+function formatVersion(v: string) {
+  const trimmed = v.trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("v") ? trimmed : `v${trimmed}`;
+}
+
 function App() {
   const [integrations, setIntegrations] = useState<domain.Integration[]>([]);
   const [sessions, setSessions] = useState<domain.Session[]>([]);
@@ -108,6 +115,7 @@ function App() {
   const [eksSetup, setEksSetup] = useState<eksmgr.SetupStatus | null>(null);
   const [eksFilter, setEksFilter] = useState("");
   const [eksMessage, setEksMessage] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState("");
 
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
@@ -151,6 +159,9 @@ function App() {
   }
 
   useEffect(() => {
+    Version()
+      .then((v) => setAppVersion(formatVersion(v)))
+      .catch(() => setAppVersion(""));
     refresh();
     EventsOn("workspace:updated", () => refresh());
     EventsOn("session:updated", () => refresh());
@@ -795,6 +806,7 @@ function App() {
             </table>
           )}
         </div>
+        {appVersion && <div className="app-version">{appVersion}</div>}
       </div>
 
       {ssmSession && (

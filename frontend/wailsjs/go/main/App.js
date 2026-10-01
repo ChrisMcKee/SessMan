@@ -81,3 +81,7 @@ export function UpdateIntegration(arg1, arg2) {
 export function UpdateSettings(arg1) {
   return window['go']['main']['App']['UpdateSettings'](arg1);
 }
+
+export function Version() {
+  return window['go']['main']['App']['Version']();
+}

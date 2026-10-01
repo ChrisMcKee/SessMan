@@ -451,6 +451,18 @@ select {
   overflow: auto;
 }
 
+.app-version {
+  flex-shrink: 0;
+  align-self: flex-end;
+  padding: 0.28rem 0.9rem 0.4rem;
+  color: #6f7280;
+  font-size: 0.72rem;
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+  user-select: text;
+  --wails-draggable: no-drag;
+}
+
 .sessions {
   width: 100%;
   border-collapse: collapse;
