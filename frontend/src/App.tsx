@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import awsLogo from "./assets/images/Amazon_Web_Services_Logo.svg";
 import {
@@ -116,6 +116,7 @@ function App() {
   const [eksFilter, setEksFilter] = useState("");
   const [eksMessage, setEksMessage] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
+  const startingRef = useRef<Map<string, string>>(new Map());
 
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
@@ -170,12 +171,23 @@ function App() {
       setDeviceCode(null);
       setBusy("SSO expired — waiting for browser login…");
       setError(null);
+      // Snapshot now: the failing StartSession clears its entry once it returns.
+      const retryIds = [...startingRef.current.entries()]
+        .filter(([, integId]) => integId === id)
+        .map(([sid]) => sid);
       void (async () => {
         try {
           await Login(id);
-          await refresh();
           setBusy(null);
           setDeviceCode(null);
+          if (retryIds.length > 0) {
+            const results = await Promise.allSettled(retryIds.map((sid) => StartSession(sid)));
+            const failed = results.find((r) => r.status === "rejected") as
+              | PromiseRejectedResult
+              | undefined;
+            setError(failed ? String(failed.reason) : null);
+          }
+          await refresh();
         } catch (e) {
           const msg = String(e);
           // Another Login (e.g. the user already clicked) owns the UI.
@@ -787,16 +799,22 @@ function App() {
                             s.state === "Inactive"
                               ? "Start session"
                               : s.state === "Error"
-                                ? s.lastError || "Stop session"
+                                ? `${s.lastError ? s.lastError + " — " : ""}click to retry`
                                 : "Stop session"
                           }
-                          onClick={() =>
-                            // Error/Pending are "on" leftovers (e.g. after cold start
-                            // before auth resumes) — one click should clear them.
-                            s.state === "Inactive"
-                              ? withBusy("Starting…", () => StartSession(s.id))
-                              : withBusy("Stopping…", () => StopSession(s.id))
-                          }
+                          onClick={() => {
+                            // Pending/Active -> stop. Inactive/Error (a failed start,
+                            // which is not running) -> start, so it is always one click.
+                            if (s.state === "Active" || s.state === "Pending") {
+                              startingRef.current.delete(s.id);
+                              void withBusy("Stopping…", () => StopSession(s.id));
+                              return;
+                            }
+                            startingRef.current.set(s.id, s.integrationId);
+                            void withBusy("Starting…", () => StartSession(s.id)).finally(() =>
+                              startingRef.current.delete(s.id)
+                            );
+                          }}
                         />
                       </div>
                     </td>
