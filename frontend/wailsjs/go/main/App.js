@@ -50,6 +50,10 @@ export function Logout(arg1) {
   return window['go']['main']['App']['Logout'](arg1);
 }
 
+export function ReopenLogin(arg1) {
+  return window['go']['main']['App']['ReopenLogin'](arg1);
+}
+
 export function SSMPluginStatus() {
   return window['go']['main']['App']['SSMPluginStatus']();
 }

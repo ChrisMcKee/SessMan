@@ -34,6 +34,9 @@ const (
 // errInterrupted means the session was stopped or changed while it was starting.
 var errInterrupted = errors.New("session start was interrupted")
 
+// ErrNoLoginInProgress means there is no pending browser login to re-open.
+var ErrNoLoginInProgress = errors.New("no login in progress")
+
 // ssoAPI is the subset of the SSO client the manager depends on.
 type ssoAPI interface {
 	Login(ctx context.Context, integrationID, startURL, region string, onDeviceAuth sso.DeviceAuthCallback) error
@@ -46,6 +49,30 @@ type ssoAPI interface {
 type flight struct {
 	done chan struct{}
 	err  error
+}
+
+type pendingLogin struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	err    error
+
+	mu   sync.Mutex
+	info *sso.DeviceAuthInfo
+}
+
+func (p *pendingLogin) setInfo(info sso.DeviceAuthInfo) {
+	p.mu.Lock()
+	p.info = &info
+	p.mu.Unlock()
+}
+
+func (p *pendingLogin) deviceInfo() (sso.DeviceAuthInfo, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.info == nil {
+		return sso.DeviceAuthInfo{}, false
+	}
+	return *p.info, true
 }
 
 // Manager orchestrates integrations, sessions, and credential files.
@@ -62,14 +89,16 @@ type Manager struct {
 	flights map[string]*flight
 
 	loginMu sync.Mutex
-	logins  map[string]context.CancelFunc
+	logins  map[string]*pendingLogin
+	// openURL opens the browser login page; replaceable in tests.
+	openURL func(url string) error
 
 	rotMu     sync.Mutex
 	rotCancel context.CancelFunc
 
 	onChange       func()
 	onAuthRequired func(integrationID string)
-	onDeviceAuth   func(info sso.DeviceAuthInfo)
+	onDeviceAuth   func(integrationID string, info sso.DeviceAuthInfo)
 }
 
 // New creates a session manager.
@@ -79,7 +108,8 @@ func New(store *workspace.Store, aws *awsfiles.Writer, ssoClient ssoAPI) *Manage
 		aws:     aws,
 		sso:     ssoClient,
 		flights: map[string]*flight{},
-		logins:  map[string]context.CancelFunc{},
+		logins:  map[string]*pendingLogin{},
+		openURL: sso.OpenBrowser,
 	}
 }
 
@@ -93,8 +123,9 @@ func (m *Manager) SetOnAuthRequired(fn func(integrationID string)) {
 	m.onAuthRequired = fn
 }
 
-// SetOnDeviceAuth registers a callback when the SSO user code is ready.
-func (m *Manager) SetOnDeviceAuth(fn func(info sso.DeviceAuthInfo)) {
+// SetOnDeviceAuth registers a callback when the SSO user code is ready (and
+// again whenever the pending login prompt is re-opened).
+func (m *Manager) SetOnDeviceAuth(fn func(integrationID string, info sso.DeviceAuthInfo)) {
 	m.onDeviceAuth = fn
 }
 
@@ -341,7 +372,9 @@ func (m *Manager) DeleteIntegration(id string) error {
 }
 
 // Login authenticates an integration and discovers sessions. Only one login
-// per integration may run at a time; CancelLogin aborts a pending one.
+// per integration runs at a time: a second call while one is pending re-opens
+// the browser prompt (it may have been closed) and waits for the pending login
+// to finish. CancelLogin aborts a pending one.
 func (m *Manager) Login(ctx context.Context, integrationID string) error {
 	integ, err := m.findIntegration(integrationID)
 	if err != nil {
@@ -351,25 +384,44 @@ func (m *Manager) Login(ctx context.Context, integrationID string) error {
 	lctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	m.loginMu.Lock()
-	if _, busy := m.logins[integrationID]; busy {
+	if p, busy := m.logins[integrationID]; busy {
 		m.loginMu.Unlock()
-		return fmt.Errorf("login already in progress")
+		m.reopen(integrationID, p)
+		select {
+		case <-p.done:
+			return p.err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-	m.logins[integrationID] = cancel
+	p := &pendingLogin{cancel: cancel, done: make(chan struct{})}
+	m.logins[integrationID] = p
 	m.loginMu.Unlock()
-	defer func() {
-		m.loginMu.Lock()
-		delete(m.logins, integrationID)
-		m.loginMu.Unlock()
-	}()
 
-	if err := m.sso.Login(lctx, integrationID, integ.StartURL, integ.SSORegion, m.onDeviceAuth); err != nil {
+	p.err = m.login(lctx, integ, p)
+
+	m.loginMu.Lock()
+	delete(m.logins, integrationID)
+	m.loginMu.Unlock()
+	close(p.done)
+	return p.err
+}
+
+func (m *Manager) login(ctx context.Context, integ domain.Integration, p *pendingLogin) error {
+	integrationID := integ.ID
+	onDevice := func(info sso.DeviceAuthInfo) {
+		p.setInfo(info)
+		if m.onDeviceAuth != nil {
+			m.onDeviceAuth(integrationID, info)
+		}
+	}
+	if err := m.sso.Login(ctx, integrationID, integ.StartURL, integ.SSORegion, onDevice); err != nil {
 		if errors.Is(err, context.Canceled) {
 			return fmt.Errorf("login cancelled")
 		}
 		return err
 	}
-	dctx, dcancel := context.WithTimeout(lctx, discoveryTimeout)
+	dctx, dcancel := context.WithTimeout(ctx, discoveryTimeout)
 	defer dcancel()
 	roles, err := m.sso.ListAccountRoles(dctx, integrationID, integ.SSORegion)
 	if err != nil {
@@ -382,9 +434,37 @@ func (m *Manager) Login(ctx context.Context, integrationID string) error {
 	if err := m.setIntegrationStatus(integrationID, domain.IntegrationLoggedIn); err != nil {
 		return err
 	}
-	m.resumeAfterLogin(lctx, integrationID)
+	m.resumeAfterLogin(ctx, integrationID)
 	m.notify()
 	return nil
+}
+
+// ReopenLogin re-opens the browser prompt of a pending login (e.g. after the
+// tab was closed) and re-announces its user code.
+func (m *Manager) ReopenLogin(integrationID string) error {
+	m.loginMu.Lock()
+	p := m.logins[integrationID]
+	m.loginMu.Unlock()
+	if p == nil {
+		return ErrNoLoginInProgress
+	}
+	return m.reopen(integrationID, p)
+}
+
+// reopen re-emits the device code and opens the verification page. Before the
+// code is known the original login is about to open the browser itself.
+func (m *Manager) reopen(integrationID string, p *pendingLogin) error {
+	info, ok := p.deviceInfo()
+	if !ok {
+		return nil
+	}
+	if m.onDeviceAuth != nil {
+		m.onDeviceAuth(integrationID, info)
+	}
+	if m.openURL == nil || info.VerificationURI == "" {
+		return nil
+	}
+	return m.openURL(info.VerificationURI)
 }
 
 // resumeAfterLogin restarts sessions that were left Error/Pending/lapsed by an
@@ -437,10 +517,10 @@ func (m *Manager) resumeAfterLogin(ctx context.Context, integrationID string) {
 // CancelLogin aborts a pending device-authorization login, if any.
 func (m *Manager) CancelLogin(integrationID string) {
 	m.loginMu.Lock()
-	cancel := m.logins[integrationID]
+	p := m.logins[integrationID]
 	m.loginMu.Unlock()
-	if cancel != nil {
-		cancel()
+	if p != nil {
+		p.cancel()
 	}
 }
 

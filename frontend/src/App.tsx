@@ -3,6 +3,7 @@ import "./App.css";
 import awsLogo from "./assets/images/Amazon_Web_Services_Logo.svg";
 import {
     AddIntegration,
+    CancelLogin,
     ConnectSSM,
     DeleteIntegration,
     EKSSetupStatus,
@@ -13,6 +14,7 @@ import {
     ListSSMInstances,
     Login,
     Logout,
+    ReopenLogin,
     SetPinned,
     SetProfileName,
     SSMPluginStatus,
@@ -34,6 +36,7 @@ type IntegrationForm = {
 };
 
 type DeviceCodeInfo = {
+  integrationId: string;
   userCode: string;
   verificationUri: string;
 };
@@ -78,6 +81,11 @@ const emptyForm: IntegrationForm = {
   ssoRegion: "eu-west-1",
   defaultRegion: "eu-west-1",
 };
+
+function isAuthError(e: unknown) {
+  const msg = String(e).toLowerCase();
+  return msg.includes("sso token expired") || msg.includes("not logged in");
+}
 
 function formatVersion(v: string) {
   const trimmed = v.trim();
@@ -168,7 +176,6 @@ function App() {
     EventsOn("session:updated", () => refresh());
     EventsOn("auth:required", (id: string) => {
       setNav(id);
-      setDeviceCode(null);
       setBusy("SSO expired — waiting for browser login…");
       setError(null);
       // Snapshot now: the failing StartSession clears its entry once it returns.
@@ -189,12 +196,7 @@ function App() {
           }
           await refresh();
         } catch (e) {
-          const msg = String(e);
-          // Another Login (e.g. the user already clicked) owns the UI.
-          if (msg.toLowerCase().includes("already in progress")) {
-            return;
-          }
-          setError(msg);
+          setError(String(e));
           setBusy(null);
           setDeviceCode(null);
         }
@@ -300,6 +302,23 @@ function App() {
     }
   }
 
+  async function reopenLoginPrompt(integrationId: string) {
+    try {
+      await ReopenLogin(integrationId);
+    } catch (e) {
+      setError(String(e));
+      setDeviceCode(null);
+    }
+  }
+
+  async function cancelLogin(integrationId: string) {
+    try {
+      await CancelLogin(integrationId);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   function integrationName(id: string) {
     return integrations.find((i) => i.id === id)?.name ?? "AWS";
   }
@@ -337,7 +356,7 @@ function App() {
   const filteredSSMInstances = useMemo(() => {
     const q = ssmFilter.trim().toLowerCase();
     if (!q) return ssmInstances;
-    return ssmInstances.filter((inst) => {
+    return ssmInstances.filter((inst: { name: string; instanceId: string; platformName: string; platformType: string; ipAddress: string; }) => {
       return (
         inst.name?.toLowerCase().includes(q) ||
         inst.instanceId?.toLowerCase().includes(q) ||
@@ -597,10 +616,36 @@ function App() {
             {deviceCode && (
               <div className="banner device-code" role="status">
                 <div>
-                  <div className="muted small">Confirm this code in the browser</div>
+                  <div className="muted small">
+                    Confirm this code in the browser
+                    {deviceCode.integrationId
+                      ? ` for ${integrationName(deviceCode.integrationId)}`
+                      : ""}
+                  </div>
                   <div className="user-code">{deviceCode.userCode}</div>
                 </div>
-                <div className="muted small">Waiting for authorization…</div>
+                <div className="device-code-side">
+                  <div className="muted small">Waiting for authorization…</div>
+                  {deviceCode.integrationId && (
+                    <div className="device-code-actions">
+                      <button
+                        type="button"
+                        className="primary"
+                        title="Re-open the login page if the browser tab was closed"
+                        onClick={() => reopenLoginPrompt(deviceCode.integrationId)}
+                      >
+                        Open browser again
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => cancelLogin(deviceCode.integrationId)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             {busy && !deviceCode && <div className="banner info">{busy}</div>}
@@ -811,9 +856,17 @@ function App() {
                               return;
                             }
                             startingRef.current.set(s.id, s.integrationId);
-                            void withBusy("Starting…", () => StartSession(s.id)).finally(() =>
-                              startingRef.current.delete(s.id)
-                            );
+                            setBusy("Starting…");
+                            setError(null);
+                            void StartSession(s.id)
+                              .catch((e) => {
+                                if (!isAuthError(e)) setError(String(e));
+                              })
+                              .finally(() => {
+                                startingRef.current.delete(s.id);
+                                setBusy((cur) => (cur === "Starting…" ? null : cur));
+                                void refresh();
+                              });
                           }}
                         />
                       </div>

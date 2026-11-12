@@ -173,7 +173,7 @@ func (c *Client) Login(ctx context.Context, integrationID, startURL, region stri
 			VerificationURI: uri,
 		})
 	}
-	_ = openBrowser(uri)
+	_ = OpenBrowser(uri)
 
 	interval := time.Duration(auth.Interval) * time.Second
 	if interval <= 0 {
@@ -470,7 +470,7 @@ func (c *Client) Logout(integrationID string) error {
 	return c.secrets.DeleteIntegrationSecrets(integrationID)
 }
 
-func openBrowser(url string) error {
+func OpenBrowser(url string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":

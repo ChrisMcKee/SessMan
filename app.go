@@ -66,8 +66,9 @@ func (a *App) startup(ctx context.Context) {
 	a.mgr.SetOnAuthRequired(func(integrationID string) {
 		runtime.EventsEmit(a.ctx, "auth:required", integrationID)
 	})
-	a.mgr.SetOnDeviceAuth(func(info sso.DeviceAuthInfo) {
+	a.mgr.SetOnDeviceAuth(func(integrationID string, info sso.DeviceAuthInfo) {
 		runtime.EventsEmit(a.ctx, "auth:device-code", map[string]string{
+			"integrationId":   integrationID,
 			"userCode":        info.UserCode,
 			"verificationUri": info.VerificationURI,
 		})
@@ -169,6 +170,14 @@ func (a *App) CancelLogin(integrationID string) error {
 	}
 	a.mgr.CancelLogin(integrationID)
 	return nil
+}
+
+// ReopenLogin re-opens the browser prompt of a pending SSO login.
+func (a *App) ReopenLogin(integrationID string) error {
+	if err := a.requireMgr(); err != nil {
+		return err
+	}
+	return a.mgr.ReopenLogin(integrationID)
 }
 
 // Logout clears SSO credentials for an integration.

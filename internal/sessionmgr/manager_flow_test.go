@@ -23,13 +23,13 @@ type fakeSSO struct {
 	creds   sso.RoleCredentials
 	calls   int
 	gate    chan struct{} // if set, GetRoleCredentials blocks until closed
-	login   func(ctx context.Context) error
+	login   func(ctx context.Context, cb sso.DeviceAuthCallback) error
 	roles   []sso.AccountRole
 }
 
-func (f *fakeSSO) Login(ctx context.Context, _, _, _ string, _ sso.DeviceAuthCallback) error {
+func (f *fakeSSO) Login(ctx context.Context, _, _, _ string, cb sso.DeviceAuthCallback) error {
 	if f.login != nil {
-		return f.login(ctx)
+		return f.login(ctx, cb)
 	}
 	return nil
 }
@@ -79,7 +79,9 @@ func newEnv(t *testing.T, f *fakeSSO, sess domain.Session) *env {
 		ws.Sessions = []domain.Session{sess}
 		return nil
 	})
-	return &env{mgr: New(store, w, f), store: store, credPath: credPath}
+	mgr := New(store, w, f)
+	mgr.openURL = func(string) error { return nil } // never launch a real browser
+	return &env{mgr: mgr, store: store, credPath: credPath}
 }
 
 func (e *env) session(t *testing.T) domain.Session {
@@ -352,27 +354,83 @@ func TestLoginClearsStaleActiveLastError(t *testing.T) {
 
 func TestLoginCancelAndSingleLogin(t *testing.T) {
 	started := make(chan struct{})
-	f := &fakeSSO{login: func(ctx context.Context) error {
+	var logins int
+	f := &fakeSSO{login: func(ctx context.Context, cb sso.DeviceAuthCallback) error {
+		logins++
+		cb(sso.DeviceAuthInfo{UserCode: "ABCD-EFGH", VerificationURI: "https://device.example/?code=ABCD-EFGH"})
 		close(started)
 		<-ctx.Done()
 		return ctx.Err()
 	}}
 	e := newEnv(t, f, domain.Session{State: domain.SessionInactive})
-	done := make(chan error, 1)
-	go func() { done <- e.mgr.Login(context.Background(), "i1") }()
+
+	var mu sync.Mutex
+	var opened []string
+	var announced []string
+	e.mgr.openURL = func(u string) error {
+		mu.Lock()
+		opened = append(opened, u)
+		mu.Unlock()
+		return nil
+	}
+	e.mgr.SetOnDeviceAuth(func(id string, info sso.DeviceAuthInfo) {
+		mu.Lock()
+		announced = append(announced, id+":"+info.UserCode)
+		mu.Unlock()
+	})
+
+	if err := e.mgr.ReopenLogin("i1"); !errors.Is(err, ErrNoLoginInProgress) {
+		t.Fatalf("reopen without a pending login: got %v", err)
+	}
+
+	first := make(chan error, 1)
+	go func() { first <- e.mgr.Login(context.Background(), "i1") }()
 	<-started
 
-	if err := e.mgr.Login(context.Background(), "i1"); err == nil || !strings.Contains(err.Error(), "already in progress") {
-		t.Fatalf("second login should be rejected, got %v", err)
+	// A second login joins the pending one and re-opens its browser prompt.
+	second := make(chan error, 1)
+	go func() { second <- e.mgr.Login(context.Background(), "i1") }()
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(opened) == 1
+	})
+	if err := e.mgr.ReopenLogin("i1"); err != nil {
+		t.Fatal(err)
 	}
+	mu.Lock()
+	if len(opened) != 2 || opened[1] != "https://device.example/?code=ABCD-EFGH" {
+		t.Fatalf("prompt not re-opened: %v", opened)
+	}
+	if len(announced) != 3 || announced[2] != "i1:ABCD-EFGH" {
+		t.Fatalf("device code not re-announced: %v", announced)
+	}
+	mu.Unlock()
+
 	e.mgr.CancelLogin("i1")
-	if err := <-done; err == nil || !strings.Contains(err.Error(), "cancelled") {
-		t.Fatalf("want cancelled, got %v", err)
+	for _, ch := range []chan error{first, second} {
+		if err := <-ch; err == nil || !strings.Contains(err.Error(), "cancelled") {
+			t.Fatalf("want cancelled, got %v", err)
+		}
+	}
+	if logins != 1 {
+		t.Fatalf("joined login must not start a second device authorization, got %d", logins)
 	}
 	// A new login may start again afterwards.
 	f.login = nil
 	if err := e.mgr.Login(context.Background(), "i1"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition not met in time")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
