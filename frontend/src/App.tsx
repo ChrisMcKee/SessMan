@@ -1,30 +1,30 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import "./App.css";
 import awsLogo from "./assets/images/Amazon_Web_Services_Logo.svg";
 import {
-  AddIntegration,
-  ConnectSSM,
-  DeleteIntegration,
-  EKSSetupStatus,
-  GetSettings,
-  ListEKSClusters,
-  ListIntegrations,
-  ListSessions,
-  ListSSMInstances,
-  Login,
-  Logout,
-  SetPinned,
-  SetProfileName,
-  SSMPluginStatus,
-  StartSession,
-  StopSession,
-  UpdateEKSKubeconfig,
-  UpdateIntegration,
-  UpdateSettings,
-  Version,
+    AddIntegration,
+    ConnectSSM,
+    DeleteIntegration,
+    EKSSetupStatus,
+    GetSettings,
+    ListEKSClusters,
+    ListIntegrations,
+    ListSessions,
+    ListSSMInstances,
+    Login,
+    Logout,
+    SetPinned,
+    SetProfileName,
+    SSMPluginStatus,
+    StartSession,
+    StopSession,
+    UpdateEKSKubeconfig,
+    UpdateIntegration,
+    UpdateSettings,
+    Version,
 } from "../wailsjs/go/main/App";
-import { EventsOn, Quit, WindowMinimise } from "../wailsjs/runtime/runtime";
-import type { domain, eksmgr, ssmmgr } from "../wailsjs/go/models";
+import {EventsOn, Quit, WindowMinimise} from "../wailsjs/runtime/runtime";
+import type {domain, eksmgr, ssmmgr} from "../wailsjs/go/models";
 
 type IntegrationForm = {
   name: string;
